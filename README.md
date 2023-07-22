@@ -2,6 +2,20 @@
 
 This is a new project based on [dozm/di](https://github.com/dozm/di).  The main reason for the deviation is addition of features that do not exist in the original.
 
+## Features
+
+The features added are;
+
+### The ability to add an object that implements many interfaces.  
+
+I would like to add an object that MAY implement a lot of interfaces, but in this case I want to only register a subset of them.  You may have an object that you would like to new with different inputs and more importantly cherry pick which interfaces get registered in the DI.  You may not want to register the object itself, but only the Interface.  I couldn't do this with the original dozm/di and even with asp.net's di on which dozm/di was based on.
+
+### The ability to register by an lookup key and fetch by the lookup key
+
+I would like to register an object by a name.  i.e. "my-awesome-object".
+
+
+
 A dependency injection module based on reflection.
 
 ## Installation
