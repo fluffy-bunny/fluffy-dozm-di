@@ -1,6 +1,4 @@
-# fluffy-dozm-di
-
-This is a new project based on [dozm/di](https://github.com/dozm/di).  The main reason for the deviation is addition of features that do not exist in the original.
+# di
 
 A dependency injection module based on reflection.
 
@@ -17,7 +15,7 @@ package main
 
 import (
     "fmt"
-    di "github.com/fluffy-bunny/fluffy-dozm-di"
+    "github.com/fluffy-bunny/fluffy-dozm-di"
 )
 
 func main() {
