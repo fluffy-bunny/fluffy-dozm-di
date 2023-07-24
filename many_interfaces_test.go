@@ -194,6 +194,10 @@ func AddUniqueDepartment[TUnique any](b ContainerBuilder, name string) {
 }
 func TestUniquenesWithMany(t *testing.T) {
 	b := Builder()
+	b.ConfigureOptions(func(o *Options) {
+		o.ValidateScopes = true
+		o.ValidateOnBuild = true
+	})
 	AddSingletonTime(b)
 	AddUniqueDepartment[DepartmentIT](b, "IT")
 	AddUniqueDepartment[DepartmentHR](b, "HR")
