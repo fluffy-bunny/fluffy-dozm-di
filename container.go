@@ -152,7 +152,12 @@ func (c *container) createEngine() ContainerEngine {
 
 func (c *container) createServiceLookupKeyAccessor(key string) (ServiceAccessor, error) {
 	descriptor := c.CallSiteFactory.descriptorKeyLookup[key]
-	callSite, err := c.CallSiteFactory.GetCallSiteByDescriptor(descriptor.item, newCallSiteChain())
+	itemDescriptor := descriptor.item
+	if len(descriptor.items) > 0 {
+		// get the last one
+		itemDescriptor = descriptor.items[len(descriptor.items)-1]
+	}
+	callSite, err := c.CallSiteFactory.GetCallSiteByDescriptor(itemDescriptor, newCallSiteChain())
 	if err != nil {
 		return nil, err
 	}
