@@ -88,6 +88,11 @@ func AddSingletonEmployeesWithLookupKeys(b ContainerBuilder) {
 		reflect.TypeOf((*IEmployee)(nil)))
 	AddSingletonWithLookupKeys[*employee](b,
 		func() *employee {
+			return &employee{Name: "2a"}
+		}, []string{"2"}, map[string]interface{}{"name": "2a"},
+		reflect.TypeOf((*IEmployee)(nil)))
+	AddSingletonWithLookupKeys[*employee](b,
+		func() *employee {
 			return &employee{Name: "2"}
 		}, []string{"2"}, map[string]interface{}{"name": "2"},
 		reflect.TypeOf((*IEmployee)(nil)))
@@ -344,11 +349,16 @@ func TestManyWithSingletonWithLookupKeys(t *testing.T) {
 	scopeFactory := Get[ScopeFactory](c)
 	scope1 := scopeFactory.CreateScope()
 	employees := Get[[]IEmployee](scope1.Container())
-	require.Equal(t, 2, len(employees))
+	require.Equal(t, 3, len(employees))
 	require.NotPanics(t, func() {
 		h := GetByLookupKey[IEmployee](c, "1")
 		require.NotNil(t, h)
 		require.Equal(t, "1", h.GetName())
+	})
+	require.NotPanics(t, func() {
+		h := GetByLookupKey[IEmployee](c, "2")
+		require.NotNil(t, h)
+		require.Equal(t, "2", h.GetName())
 	})
 }
 func TestManyWithTransientWithLookupKeys(t *testing.T) {
