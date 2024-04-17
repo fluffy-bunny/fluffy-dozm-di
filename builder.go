@@ -198,6 +198,20 @@ func AddSingleton[T any](cb ContainerBuilder, ctor any, implementedInterfaceType
 	cb.Add(Singleton[T](ctor, implementedInterfaceTypes...))
 }
 
+// AddFunc is a convenience method to add a singleton service descriptor to the ContainerBuilder.
+func AddFunc[T any](cb ContainerBuilder, ctor any) {
+	AddSingleton[T](cb, ctor)
+}
+
+// AddFuncByLookupKey is a convenience method to add a singleton service descriptor to the ContainerBuilder.
+func AddFuncWithLookupKeys[T any](cb ContainerBuilder,
+	ctor any,
+	lookupKeys []string,
+	metadata map[string]interface{},
+) {
+	AddSingletonWithLookupKeys[T](cb, ctor, lookupKeys, metadata)
+}
+
 // Add a singleton service descriptor to the ContainerBuilder.
 // T is the service type,
 // cb is the ContainerBuilder,
