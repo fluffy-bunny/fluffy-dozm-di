@@ -133,6 +133,14 @@ func AddTransient[T any](cb ContainerBuilder, ctor any, implementedInterfaceType
 	cb.Add(Transient[T](ctor, implementedInterfaceTypes...))
 }
 
+func AddTransientFromContainer[T any](builder ContainerBuilder, container Container) {
+	AddTransient[T](builder,
+		func() (T, error) {
+			obj := Get[T](container)
+			return obj, nil
+		})
+}
+
 // Add a transient service descriptor to the ContainerBuilder.
 // T is the service type,
 // cb is the ContainerBuilder,
@@ -166,6 +174,14 @@ func AddScoped[T any](cb ContainerBuilder, ctor any, implementedInterfaceTypes .
 	cb.Add(Scoped[T](ctor, implementedInterfaceTypes...))
 }
 
+func AddScopedFromContainer[T any](builder ContainerBuilder, container Container) {
+	AddScoped[T](builder,
+		func() (T, error) {
+			obj := Get[T](container)
+			return obj, nil
+		})
+}
+
 // Add a scoped service descriptor to the ContainerBuilder.
 // T is the service type,
 // cb is the ContainerBuilder,
@@ -196,6 +212,14 @@ func AddScopedWithLookupKeys[T any](cb ContainerBuilder,
 // ctor is the constructor of the service T.
 func AddSingleton[T any](cb ContainerBuilder, ctor any, implementedInterfaceTypes ...reflect.Type) {
 	cb.Add(Singleton[T](ctor, implementedInterfaceTypes...))
+}
+
+func AddSingletonFromContainer[T any](builder ContainerBuilder, container Container) {
+	AddSingleton[T](builder,
+		func() (T, error) {
+			obj := Get[T](container)
+			return obj, nil
+		})
 }
 
 // AddFunc is a convenience method to add a singleton service descriptor to the ContainerBuilder.

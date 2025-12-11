@@ -279,28 +279,47 @@ func TestManyWithScope(t *testing.T) {
 	c := b.Build()
 
 	scopeFactory := Get[ScopeFactory](c)
-	scope1 := scopeFactory.CreateScope()
-	scope2 := scopeFactory.CreateScope()
 
-	// get all the departments
-	department1 := Get[IDepartment2](scope1.Container())
-	department2 := Get[IDepartment2](scope2.Container())
+	var scope1Container, scope2Container Container
 
-	require.Equal(t, department1, department2)
+	func() {
+		scope1 := scopeFactory.CreateScope()
+		defer scope1.Dispose()
+		scope2 := scopeFactory.CreateScope()
+		defer scope2.Dispose()
 
-	scopeName1 := Get[IScopedName](scope1.Container())
-	scopeName2 := Get[IScopedName](scope2.Container())
-	require.NotSame(t, scopeName1, scopeName2)
+		scope1Container = scope1.Container()
+		scope2Container = scope2.Container()
 
-	// get all the IScopedName(s)
-	scopeNames1 := Get[[]IScopedName](scope1.Container())
-	require.Equal(t, 2, len(scopeNames1))
-	require.NotSame(t, scopeNames1[0], scopeNames1[1])
-	scopeNames2 := Get[[]IScopedName](scope2.Container())
-	require.Equal(t, 2, len(scopeNames2))
-	require.NotSame(t, scopeNames2[0], scopeNames2[1])
+		// get all the departments
+		department1 := Get[IDepartment2](scope1Container)
+		department2 := Get[IDepartment2](scope2Container)
 
-	for i := 0; i < len(scopeNames1); i++ {
-		require.NotSame(t, scopeNames1[i], scopeNames2[i])
-	}
+		require.Equal(t, department1, department2)
+
+		scopeName1 := Get[IScopedName](scope1Container)
+		scopeName2 := Get[IScopedName](scope2Container)
+		require.NotSame(t, scopeName1, scopeName2)
+
+		// get all the IScopedName(s)
+		scopeNames1 := Get[[]IScopedName](scope1Container)
+		require.Equal(t, 2, len(scopeNames1))
+		require.NotSame(t, scopeNames1[0], scopeNames1[1])
+		scopeNames2 := Get[[]IScopedName](scope2Container)
+		require.Equal(t, 2, len(scopeNames2))
+		require.NotSame(t, scopeNames2[0], scopeNames2[1])
+
+		for i := 0; i < len(scopeNames1); i++ {
+			require.NotSame(t, scopeNames1[i], scopeNames2[i])
+		}
+	}()
+
+	// Verify that defer scope.Dispose() worked by attempting to use disposed scopes
+	_, err1 := TryGet[IScopedName](scope1Container)
+	require.Error(t, err1, "scope1 should be disposed")
+	require.Contains(t, err1.Error(), "ObjectDisposedError")
+
+	_, err2 := TryGet[IScopedName](scope2Container)
+	require.Error(t, err2, "scope2 should be disposed")
+	require.Contains(t, err2.Error(), "ObjectDisposedError")
 }
