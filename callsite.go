@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync/atomic"
 
 	"github.com/fluffy-bunny/fluffy-dozm-di/errorx"
 	"github.com/fluffy-bunny/fluffy-dozm-di/syncx"
@@ -19,9 +20,6 @@ const (
 	CallSiteKind_Constant
 	CallSiteKind_Slice
 	CallSiteKind_Container
-	CallSiteKind_Scope
-	CallSiteKind_Transient
-	CallSiteKind_Singleton
 )
 
 type CallSite interface {
@@ -33,20 +31,21 @@ type CallSite interface {
 }
 
 type ConstantCallSite struct {
-	serviceType reflect.Type
-	value       any
+	serviceType  reflect.Type
+	defaultValue any
+	value        atomic.Value
 }
 
 func (cs *ConstantCallSite) Value() any {
-	return cs.value
+	return cs.value.Load()
 }
 
 func (cs *ConstantCallSite) SetValue(v any) {
-	cs.value = v
+	cs.value.Store(v)
 }
 
 func (cs *ConstantCallSite) DefaultValue() any {
-	return cs.value
+	return cs.defaultValue
 }
 
 func (cs *ConstantCallSite) ServiceType() reflect.Type {
@@ -63,25 +62,25 @@ func (cs *ConstantCallSite) Cache() ResultCache {
 
 func newConstantCallSite(serviceType reflect.Type, defaultValue any) *ConstantCallSite {
 	return &ConstantCallSite{
-		serviceType: serviceType,
-		value:       defaultValue,
+		serviceType:  serviceType,
+		defaultValue: defaultValue,
 	}
 }
 
 // Factory call site
 type FactoryCallSite struct {
 	serviceType reflect.Type
-	value       any
+	value       atomic.Value
 	cache       ResultCache
 	Factory     Factory
 }
 
 func (cs *FactoryCallSite) Value() any {
-	return cs.value
+	return cs.value.Load()
 }
 
 func (cs *FactoryCallSite) SetValue(v any) {
-	cs.value = v
+	cs.value.Store(v)
 }
 
 func (cs *FactoryCallSite) ServiceType() reflect.Type {
@@ -106,18 +105,18 @@ func newFactoryCallSite(cache ResultCache, serviceType reflect.Type, factory Fac
 
 type ConstructorCallSite struct {
 	serviceType reflect.Type
-	value       any
+	value       atomic.Value
 	Ctor        *ConstructorInfo
 	Parameters  []CallSite
 	cache       ResultCache
 }
 
 func (cs *ConstructorCallSite) Value() any {
-	return cs.value
+	return cs.value.Load()
 }
 
 func (cs *ConstructorCallSite) SetValue(v any) {
-	cs.value = v
+	cs.value.Store(v)
 }
 
 func (cs *ConstructorCallSite) ServiceType() reflect.Type {
@@ -142,15 +141,15 @@ func newConstructorCallSite(cache ResultCache, serviceType reflect.Type, ctor *C
 }
 
 type ContainerCallSite struct {
-	value any
+	value atomic.Value
 }
 
 func (cs *ContainerCallSite) Value() any {
-	return cs.value
+	return cs.value.Load()
 }
 
 func (cs *ContainerCallSite) SetValue(v any) {
-	cs.value = v
+	cs.value.Store(v)
 }
 
 func (cs *ContainerCallSite) ServiceType() reflect.Type {
@@ -170,15 +169,15 @@ type SliceCallSite struct {
 	Elem        reflect.Type
 	CallSites   []CallSite
 	cache       ResultCache
-	value       any
+	value       atomic.Value
 }
 
 func (cs *SliceCallSite) Value() any {
-	return cs.value
+	return cs.value.Load()
 }
 
 func (cs *SliceCallSite) SetValue(v any) {
-	cs.value = v
+	cs.value.Store(v)
 }
 
 func (cs *SliceCallSite) Cache() ResultCache {
@@ -516,7 +515,10 @@ func (dci descriptorCacheItem) Add(descriptor *Descriptor) descriptorCacheItem {
 		newCacheItem.item = descriptor
 	} else {
 		newCacheItem.item = dci.item
-		newCacheItem.items = append(dci.items, descriptor)
+		newItems := make([]*Descriptor, len(dci.items)+1)
+		copy(newItems, dci.items)
+		newItems[len(dci.items)] = descriptor
+		newCacheItem.items = newItems
 	}
 	return newCacheItem
 }

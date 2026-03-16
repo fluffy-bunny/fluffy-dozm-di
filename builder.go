@@ -35,17 +35,27 @@ func (b *containerBuilder) Remove(t reflect.Type) {
 	descriptors := b.descriptors
 	j := 0
 	for _, d := range descriptors {
-		if d.ServiceType != t {
-			descriptors[j] = d
-			j++
+		if d.ServiceType == t || descriptorImplements(d, t) {
+			continue
 		}
+		descriptors[j] = d
+		j++
 	}
 	b.descriptors = descriptors[:j]
 }
 
 func (b *containerBuilder) Contains(t reflect.Type) bool {
 	for _, d := range b.descriptors {
-		if d.ServiceType == t {
+		if d.ServiceType == t || descriptorImplements(d, t) {
+			return true
+		}
+	}
+	return false
+}
+
+func descriptorImplements(d *Descriptor, t reflect.Type) bool {
+	for _, it := range d.ImplementedInterfaceTypes {
+		if it == t {
 			return true
 		}
 	}

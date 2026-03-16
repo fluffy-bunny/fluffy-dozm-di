@@ -3,6 +3,7 @@ package di
 import (
 	"fmt"
 	"reflect"
+	"sync/atomic"
 
 	"github.com/fluffy-bunny/fluffy-dozm-di/reflectx"
 	"github.com/fluffy-bunny/fluffy-dozm-di/syncx"
@@ -33,7 +34,7 @@ type container struct {
 	realizedServices          *syncx.Map[reflect.Type, ServiceAccessor]
 	realizedLookupKeyServices *syncx.Map[string, ServiceAccessor]
 
-	disposed          bool
+	disposed          atomic.Bool
 	callSiteValidator *CallSiteValidator
 }
 
@@ -48,7 +49,7 @@ func (c *container) GetByLookupKey(serviceType reflect.Type, key string) (any, e
 	return c.GetWithScopeWithLookupKey(serviceType, key, c.Root)
 }
 func (c *container) CreateScope() Scope {
-	if c.disposed {
+	if c.disposed.Load() {
 		panic(fmt.Errorf("%v disposed", reflect.TypeOf(c).Elem()))
 	}
 
@@ -56,7 +57,7 @@ func (c *container) CreateScope() Scope {
 }
 
 func (c *container) GetWithScope(serviceType reflect.Type, scope *ContainerEngineScope) (result any, err error) {
-	if c.disposed {
+	if c.disposed.Load() {
 		err = fmt.Errorf("%v disposed", reflect.TypeOf(c).Elem())
 		return
 	}
@@ -92,7 +93,7 @@ func (c *container) GetWithScope(serviceType reflect.Type, scope *ContainerEngin
 	return accessor(scope)
 }
 func (c *container) GetWithScopeWithLookupKey(serviceType reflect.Type, key string, scope *ContainerEngineScope) (result any, err error) {
-	if c.disposed {
+	if c.disposed.Load() {
 		err = fmt.Errorf("%v disposed", reflect.TypeOf(c).Elem())
 		return
 	}
@@ -139,12 +140,12 @@ func (c *container) validateService(d *Descriptor) error {
 }
 
 func (c *container) Dispose() {
-	c.disposed = true
+	c.disposed.Store(true)
 	c.Root.Dispose()
 }
 
 func (c *container) IsDisposed() bool {
-	return c.disposed
+	return c.disposed.Load()
 }
 
 func (c *container) createEngine() ContainerEngine {
@@ -152,7 +153,10 @@ func (c *container) createEngine() ContainerEngine {
 }
 
 func (c *container) createServiceLookupKeyAccessor(key string) (ServiceAccessor, error) {
-	descriptor := c.CallSiteFactory.descriptorKeyLookup[key]
+	descriptor, ok := c.CallSiteFactory.descriptorKeyLookup[key]
+	if !ok || descriptor.item == nil {
+		return nil, fmt.Errorf("no service registered for lookup key '%s'", key)
+	}
 	itemDescriptor := descriptor.item
 	if len(descriptor.items) > 0 {
 		// get the last one

@@ -31,7 +31,13 @@ func (c *ConstructorInfo) Call(params []reflect.Value) []reflect.Value {
 }
 
 func newConstructorInfo(ctor any) *ConstructorInfo {
+	if ctor == nil {
+		panic("constructor must not be nil")
+	}
 	ft := reflect.TypeOf(ctor)
+	if ft.Kind() != reflect.Func {
+		panic(fmt.Errorf("constructor must be a function, got %v", ft.Kind()))
+	}
 	return &ConstructorInfo{
 		FuncValue: reflect.ValueOf(ctor),
 		FuncType:  ft,
@@ -174,5 +180,5 @@ func hashTypeAndString(t reflect.Type, s string) string {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
-	return fmt.Sprintf("%s-%s", t.Name(), s)
+	return fmt.Sprintf("%s/%s-%s", t.PkgPath(), t.Name(), s)
 }

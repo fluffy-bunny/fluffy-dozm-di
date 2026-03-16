@@ -36,7 +36,8 @@ func (m *Map[TK, TV]) LoadOrCreate(key TK, valueFactory func(TK) TV) (TV, bool) 
 		return v.(TV), true
 	}
 
-	v, loaded := m.data.LoadOrStore(key, valueFactory(key))
+	newValue := valueFactory(key)
+	v, loaded := m.data.LoadOrStore(key, newValue)
 	return v.(TV), loaded
 }
 

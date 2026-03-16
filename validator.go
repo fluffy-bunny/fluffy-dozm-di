@@ -59,7 +59,7 @@ func (r *CallSiteValidator) visitCallSite(callSite CallSite, state validatorStat
 	case CacheLocation_None:
 		return r.visitNoCache(callSite, state)
 	default:
-		return nil, errors.New("unknow cache location")
+		return nil, errors.New("unknown cache location")
 	}
 }
 
@@ -72,7 +72,7 @@ func (r *CallSiteValidator) visitCallSiteMain(callSite CallSite, state validator
 	case CallSiteKind_Constructor:
 		return r.visitConstructor(callSite.(*ConstructorCallSite), state)
 	default:
-		return nil, errors.New("unknow call site kind")
+		return nil, errors.New("unknown call site kind")
 	}
 }
 

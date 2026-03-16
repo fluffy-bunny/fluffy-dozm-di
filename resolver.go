@@ -47,7 +47,7 @@ func (r *CallSiteResolver) visitCallSite(callSite CallSite, ctx resolverContext)
 	case CacheLocation_None:
 		return r.visitNoCache(callSite, ctx)
 	default:
-		return nil, errors.New("unknow cache location")
+		return nil, errors.New("unknown cache location")
 	}
 }
 
@@ -64,7 +64,7 @@ func (r *CallSiteResolver) visitCallSiteMain(callSite CallSite, ctx resolverCont
 	case CallSiteKind_Container:
 		return r.visitContainer(callSite.(*ContainerCallSite), ctx)
 	default:
-		return nil, errors.New("unknow call site kind")
+		return nil, errors.New("unknown call site kind")
 	}
 }
 
@@ -100,7 +100,11 @@ func (r *CallSiteResolver) visitConstructor(callSite *ConstructorCallSite, ctx r
 			if v, err = r.visitCallSite(p, ctx); err != nil {
 				return nil, err
 			}
-			inValues[i] = reflect.ValueOf(v)
+			if v == nil {
+				inValues[i] = reflect.Zero(p.ServiceType())
+			} else {
+				inValues[i] = reflect.ValueOf(v)
+			}
 		}
 	}
 

@@ -104,3 +104,7 @@ func (e *AggregateError) Error() string {
 	}
 	return b.String()
 }
+
+func (e *AggregateError) Unwrap() []error {
+	return e.Errors
+}

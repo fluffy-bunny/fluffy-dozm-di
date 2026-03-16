@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"sync/atomic"
 
 	"github.com/fluffy-bunny/fluffy-dozm-di/errorx"
 	"github.com/fluffy-bunny/fluffy-dozm-di/reflectx"
@@ -14,7 +15,7 @@ type ContainerEngineScope struct {
 	IsRootScope      bool
 	ResolvedServices map[ServiceCacheKey]any
 	Locker           *sync.Mutex
-	disposed         bool
+	disposed         atomic.Bool
 	disposables      []Disposable
 }
 
@@ -22,14 +23,14 @@ func (c *ContainerEngineScope) GetDescriptors() []*Descriptor {
 	return c.RootContainer.GetDescriptors()
 }
 func (s *ContainerEngineScope) Get(serviceType reflect.Type) (any, error) {
-	if s.disposed {
+	if s.disposed.Load() {
 		return nil, &errorx.ObjectDisposedError{Message: reflectx.TypeOf[Container]().String()}
 	}
 
 	return s.RootContainer.GetWithScope(serviceType, s)
 }
 func (s *ContainerEngineScope) GetByLookupKey(serviceType reflect.Type, key string) (any, error) {
-	if s.disposed {
+	if s.disposed.Load() {
 		return nil, &errorx.ObjectDisposedError{Message: reflectx.TypeOf[Container]().String()}
 	}
 
@@ -56,19 +57,21 @@ func (s *ContainerEngineScope) Disposables() []Disposable {
 }
 
 func (s *ContainerEngineScope) BeginDispose() []Disposable {
-	s.Locker.Lock()
-	if s.disposed {
-		s.Locker.Unlock()
+	if s.disposed.Swap(true) {
 		return nil
 	}
-	s.disposed = true
-	s.Locker.Unlock()
 
 	if s.IsRootScope && !s.RootContainer.IsDisposed() {
 		s.RootContainer.Dispose()
 	}
 
-	return s.disposables
+	s.Locker.Lock()
+	disposables := s.disposables
+	s.disposables = nil
+	s.ResolvedServices = nil
+	s.Locker.Unlock()
+
+	return disposables
 }
 
 func (s *ContainerEngineScope) CaptureDisposable(service any) (Disposable, error) {
@@ -79,7 +82,7 @@ func (s *ContainerEngineScope) CaptureDisposable(service any) (Disposable, error
 
 	disposed := false
 	s.Locker.Lock()
-	if s.disposed {
+	if s.disposed.Load() {
 		disposed = true
 	} else {
 		s.disposables = append(s.disposables, d)
@@ -101,7 +104,7 @@ func (s *ContainerEngineScope) CaptureDisposableWithoutLock(service any) (Dispos
 		return d, nil
 	}
 
-	if s.disposed {
+	if s.disposed.Load() {
 		d.Dispose()
 		return d, fmt.Errorf("capture disposable service '%v', scope disposed", reflect.TypeOf(service))
 	} else {
