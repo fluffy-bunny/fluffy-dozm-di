@@ -15,8 +15,9 @@ var IsServiceType = reflectx.TypeOf[IsService]()
 
 // Container options.
 type Options struct {
-	ValidateScopes  bool
-	ValidateOnBuild bool
+	ValidateScopes          bool
+	ValidateOnBuild         bool
+	DetectLifetimeConflicts bool
 }
 
 // Get default container options.

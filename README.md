@@ -142,3 +142,61 @@ func TestManyWithSingletonWithLookupKeys(t *testing.T) {
 	})
 }
 ```
+
+## Resolution Order: Last Registration Wins
+
+When the same service type (interface) is registered multiple times with different lifetimes, the **last registration wins**. This follows standard DI convention (same as ASP.NET Core).
+
+### Rules
+
+| Container | Who Wins? | Rule |
+|-----------|-----------|------|
+| **Root container** | The **last registered** descriptor, regardless of lifetime | `descriptor.Last()` is used during call site creation |
+| **Scoped container** | The **last registered** descriptor, regardless of lifetime | Same call site factory is shared; resolution order is identical |
+
+The lifetime of the winning descriptor then determines caching behavior:
+
+| Lifetime | Behavior |
+|----------|----------|
+| **Singleton** | One instance for the lifetime of the root container |
+| **Scoped** | One instance per scope (acts as singleton when resolved from root) |
+| **Transient** | New instance every time |
+
+### Example
+
+```go
+b := di.Builder()
+
+// Register ISomething three times with different lifetimes
+di.AddTransient[ISomething](b, func() ISomething { return &somethingTransient{} })
+di.AddSingleton[ISomething](b, func() ISomething { return &somethingSingleton{} })
+di.AddScoped[ISomething](b, func() ISomething { return &somethingScoped{} })
+
+c := b.Build()
+
+// Scoped was registered last, so it wins
+result := di.Get[ISomething](c) // returns somethingScoped
+
+// ALL registrations are still available as a slice
+all := di.Get[[]ISomething](c) // returns [somethingTransient, somethingSingleton, somethingScoped]
+```
+
+### Detecting Lifetime Conflicts
+
+If you want to **panic at build time** when the same service type is registered with different lifetimes, enable `DetectLifetimeConflicts`:
+
+```go
+b := di.Builder()
+b.ConfigureOptions(func(o *di.Options) {
+    o.DetectLifetimeConflicts = true
+})
+
+di.AddTransient[ISomething](b, func() ISomething { return &somethingTransient{} })
+di.AddSingleton[ISomething](b, func() ISomething { return &somethingSingleton{} })
+
+// This will panic with:
+//   "service type 'ISomething' is registered with conflicting lifetimes: [Transient Singleton]"
+c := b.Build()
+```
+
+> **Note**: Multiple registrations with the **same** lifetime are allowed and will not trigger a panic. Only mixed lifetimes for the same type are flagged.

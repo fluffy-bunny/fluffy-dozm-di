@@ -1,6 +1,7 @@
 package di
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/fluffy-bunny/fluffy-dozm-di/errorx"
@@ -82,6 +83,10 @@ func (b *containerBuilder) Build() Container {
 
 	if options.ValidateScopes {
 		c.callSiteValidator = newCallSiteValidator()
+	}
+
+	if options.DetectLifetimeConflicts {
+		detectLifetimeConflicts(b.descriptors)
 	}
 
 	if options.ValidateOnBuild {
@@ -317,4 +322,44 @@ func AddScopedFactory[T any](cb ContainerBuilder, factory Factory) {
 
 func AddSingletonFactory[T any](cb ContainerBuilder, factory Factory) {
 	cb.Add(SingletonFactory[T](factory))
+}
+
+// detectLifetimeConflicts panics if any service type is registered with more than one distinct lifetime.
+func detectLifetimeConflicts(descriptors []*Descriptor) {
+	lifetimes := make(map[reflect.Type]map[Lifetime]bool)
+	for _, d := range descriptors {
+		if _, ok := lifetimes[d.ServiceType]; !ok {
+			lifetimes[d.ServiceType] = make(map[Lifetime]bool)
+		}
+		lifetimes[d.ServiceType][d.Lifetime] = true
+	}
+
+	errs := make([]error, 0)
+	for serviceType, lt := range lifetimes {
+		if len(lt) > 1 {
+			names := make([]string, 0, len(lt))
+			for l := range lt {
+				names = append(names, lifetimeName(l))
+			}
+			errs = append(errs, fmt.Errorf(
+				"service type '%v' is registered with conflicting lifetimes: %v", serviceType, names))
+		}
+	}
+
+	if len(errs) > 0 {
+		panic(&errorx.AggregateError{Errors: errs})
+	}
+}
+
+func lifetimeName(l Lifetime) string {
+	switch l {
+	case Lifetime_Singleton:
+		return "Singleton"
+	case Lifetime_Scoped:
+		return "Scoped"
+	case Lifetime_Transient:
+		return "Transient"
+	default:
+		return "Unknown"
+	}
 }
