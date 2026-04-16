@@ -1,9 +1,11 @@
 package di
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -461,4 +463,183 @@ func TestDisposeAfterScopedResolution_NoLeak(t *testing.T) {
 	// ResolvedServices should be cleared
 	engineScope := scope.(*ContainerEngineScope)
 	require.Nil(t, engineScope.ResolvedServices)
+}
+
+type IHeavyScopedRequest interface {
+	Handle(ctx context.Context) int
+}
+
+type heavySingletonState struct {
+	seed int
+}
+
+type heavyTransientState struct {
+	value int
+}
+
+type heavyScopedPayload struct {
+	id       int64
+	closed   atomic.Bool
+	active   *atomic.Int64
+	created  *atomic.Int64
+	disposed *atomic.Int64
+}
+
+func (p *heavyScopedPayload) Dispose() {
+	if p.closed.Swap(true) {
+		return
+	}
+	p.disposed.Add(1)
+	p.active.Add(-1)
+}
+
+type heavyScopedRequest struct {
+	singleton *heavySingletonState
+	transient *heavyTransientState
+	payload   *heavyScopedPayload
+}
+
+func (r *heavyScopedRequest) Handle(ctx context.Context) int {
+	_ = ctx
+	return int(r.payload.id) + r.transient.value + r.singleton.seed
+}
+
+func registerHeavyScopedRequestGraph(
+	b ContainerBuilder,
+	created *atomic.Int64,
+	active *atomic.Int64,
+	disposed *atomic.Int64,
+	transientCounter *atomic.Int64,
+) {
+	AddSingleton[*heavySingletonState](b, func() *heavySingletonState {
+		return &heavySingletonState{seed: 7}
+	})
+
+	AddTransient[*heavyTransientState](b, func() *heavyTransientState {
+		return &heavyTransientState{value: int(transientCounter.Add(1))}
+	})
+
+	AddScoped[*heavyScopedPayload](b, func() *heavyScopedPayload {
+		id := created.Add(1)
+		active.Add(1)
+		return &heavyScopedPayload{
+			id:       id,
+			active:   active,
+			created:  created,
+			disposed: disposed,
+		}
+	})
+
+	AddScoped[IHeavyScopedRequest](b, func(
+		singleton *heavySingletonState,
+		transient *heavyTransientState,
+		payload *heavyScopedPayload,
+	) IHeavyScopedRequest {
+		return &heavyScopedRequest{
+			singleton: singleton,
+			transient: transient,
+			payload:   payload,
+		}
+	})
+}
+
+func heavyScopedWorkloadSize(t *testing.T) int {
+	t.Helper()
+	if testing.Short() {
+		return 2000
+	}
+	return 50000
+}
+
+func TestHeavyScopedRequestSimulation_NoRetainedScopedInstances(t *testing.T) {
+	var created atomic.Int64
+	var active atomic.Int64
+	var disposed atomic.Int64
+	var transientCounter atomic.Int64
+
+	b := Builder()
+	b.ConfigureOptions(func(o *Options) {
+		o.ValidateScopes = true
+		o.ValidateOnBuild = true
+	})
+	registerHeavyScopedRequestGraph(b, &created, &active, &disposed, &transientCounter)
+
+	c := b.Build()
+	scopeFactory := Get[ScopeFactory](c)
+	iterations := heavyScopedWorkloadSize(t)
+
+	for i := 0; i < iterations; i++ {
+		scope := scopeFactory.CreateScope()
+		request := Get[IHeavyScopedRequest](scope.Container())
+		result := request.Handle(context.Background())
+		require.Greater(t, result, 0)
+
+		scope.Dispose()
+		engineScope := scope.(*ContainerEngineScope)
+		require.Nil(t, engineScope.ResolvedServices)
+
+		if i > 0 && i%5000 == 0 {
+			runtime.GC()
+		}
+	}
+
+	require.Equal(t, int64(iterations), created.Load(), "all scoped payloads should be created once per simulated request")
+	require.Equal(t, int64(iterations), disposed.Load(), "all scoped payloads should be disposed")
+	require.Equal(t, int64(0), active.Load(), "no scoped payload should remain active after all scopes are disposed")
+
+	// Scoped services resolved from disposed scopes should fail.
+	scope := scopeFactory.CreateScope()
+	_ = Get[IHeavyScopedRequest](scope.Container())
+	scope.Dispose()
+	_, err := scope.Container().Get(reflectx.TypeOf[IHeavyScopedRequest]())
+	require.Error(t, err)
+}
+
+func TestHeavyScopedRequestSimulation_Concurrent_NoRetainedScopedInstances(t *testing.T) {
+	var created atomic.Int64
+	var active atomic.Int64
+	var disposed atomic.Int64
+	var transientCounter atomic.Int64
+
+	b := Builder()
+	b.ConfigureOptions(func(o *Options) {
+		o.ValidateScopes = true
+		o.ValidateOnBuild = true
+	})
+	registerHeavyScopedRequestGraph(b, &created, &active, &disposed, &transientCounter)
+
+	c := b.Build()
+	scopeFactory := Get[ScopeFactory](c)
+	iterations := heavyScopedWorkloadSize(t)
+	workers := 32
+	if testing.Short() {
+		workers = 8
+	}
+
+	jobs := make(chan struct{}, workers)
+	var wg sync.WaitGroup
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range jobs {
+				scope := scopeFactory.CreateScope()
+				request := Get[IHeavyScopedRequest](scope.Container())
+				_ = request.Handle(context.Background())
+				scope.Dispose()
+			}
+		}()
+	}
+
+	for i := 0; i < iterations; i++ {
+		jobs <- struct{}{}
+	}
+	close(jobs)
+	wg.Wait()
+
+	runtime.GC()
+	require.Equal(t, int64(iterations), created.Load())
+	require.Equal(t, int64(iterations), disposed.Load())
+	require.Equal(t, int64(0), active.Load())
 }

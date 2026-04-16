@@ -221,6 +221,10 @@ func AddScopedWithLookupKeys[T any](cb ContainerBuilder,
 	cb.Add(descriptor)
 }
 
+func ImplementedInterfaceType[T any]() reflect.Type {
+	return reflectx.TypeOf[T]()
+}
+
 // Add a singleton service descriptor to the ContainerBuilder.
 // T is the service type,
 // cb is the ContainerBuilder,

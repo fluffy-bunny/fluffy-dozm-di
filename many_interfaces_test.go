@@ -100,6 +100,21 @@ func AddSingletonDepartments(b ContainerBuilder, names ...string) {
 		}, typeIDepartment, typeIDepartment2)
 	}
 }
+
+func AddSingletonDepartmentsWithImplementedInterfaceType(b ContainerBuilder, names ...string) {
+	for idx := range names {
+		name := names[idx]
+		secretName := fmt.Sprintf("%s-FBI", name)
+		AddSingleton[*department](b, func(tt ITime) *department {
+			return &department{
+				Name:       name,
+				Time:       tt,
+				SecretName: secretName,
+			}
+		}, ImplementedInterfaceType[IDepartment](), ImplementedInterfaceType[IDepartment2]())
+	}
+}
+
 func AddSingletonCompany(b ContainerBuilder) {
 	AddSingleton[ICompany](b, func(department IDepartment) *company {
 		return &company{
@@ -201,6 +216,37 @@ func TestSingletonOneInterface(t *testing.T) {
 	require.Equal(t, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), tts[0].Now())
 	require.Equal(t, time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC), tts[1].Now())
 }
+
+func TestImplementedInterfaceType_ReturnsInterfaceType(t *testing.T) {
+	require.Equal(t, reflectx.TypeOf[IDepartment](), ImplementedInterfaceType[IDepartment]())
+	require.Equal(t, reflectx.TypeOf[IDepartment2](), ImplementedInterfaceType[IDepartment2]())
+}
+
+func TestImplementedInterfaceType_WithAddSingleton(t *testing.T) {
+	b := Builder()
+	AddSingletonTime(b)
+	AddSingletonDepartmentsWithImplementedInterfaceType(b, "IT", "HR")
+
+	c := b.Build()
+
+	department := Get[IDepartment](c)
+	require.Equal(t, "HR", department.GetName())
+
+	department2 := Get[IDepartment2](c)
+	require.Equal(t, "HR", department2.GetName())
+	require.Equal(t, "HR-FBI", department2.GetSecretName())
+
+	departments := Get[[]IDepartment](c)
+	require.Len(t, departments, 2)
+	require.Equal(t, "IT", departments[0].GetName())
+	require.Equal(t, "HR", departments[1].GetName())
+
+	departments2 := Get[[]IDepartment2](c)
+	require.Len(t, departments2, 2)
+	require.Equal(t, "IT-FBI", departments2[0].GetSecretName())
+	require.Equal(t, "HR-FBI", departments2[1].GetSecretName())
+}
+
 func TestManyDepartments(t *testing.T) {
 	b := Builder()
 	AddSingletonTime(b)

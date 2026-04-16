@@ -1,8 +1,10 @@
 package di
 
 import (
+	"context"
 	"io"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -101,5 +103,37 @@ func Benchmark_Scoped(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		resolve(c)
+	}
+}
+
+func buildHeavyScopedRequestBenchmarkContainer() Container {
+	var created atomic.Int64
+	var active atomic.Int64
+	var disposed atomic.Int64
+	var transientCounter atomic.Int64
+
+	b := Builder()
+	b.ConfigureOptions(func(o *Options) {
+		o.ValidateScopes = true
+		o.ValidateOnBuild = true
+	})
+	registerHeavyScopedRequestGraph(b, &created, &active, &disposed, &transientCounter)
+	return b.Build()
+}
+
+func Benchmark_HeavyScopedRequestLifecycle(b *testing.B) {
+	c := buildHeavyScopedRequestBenchmarkContainer()
+	scopeFactory := Get[ScopeFactory](c)
+
+	// Warm-up one request lifecycle before timing.
+	warmScope := scopeFactory.CreateScope()
+	_ = Get[IHeavyScopedRequest](warmScope.Container()).Handle(context.Background())
+	warmScope.Dispose()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		scope := scopeFactory.CreateScope()
+		_ = Get[IHeavyScopedRequest](scope.Container()).Handle(context.Background())
+		scope.Dispose()
 	}
 }
