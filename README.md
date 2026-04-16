@@ -100,6 +100,31 @@ func AddSingletonDepartments(b ContainerBuilder, names ...string) {
 }
 ```
 
+### Same registration using `ImplementedInterfaceType[T]()`
+
+```go
+func AddSingletonDepartments(b di.ContainerBuilder, names ...string) {
+	for idx := range names {
+		name := names[idx]
+		secretName := fmt.Sprintf("%s-FBI", name)
+
+		di.AddSingleton[*department](b,
+			func(tt ITime) *department {
+				return &department{
+					Name:       name,
+					Time:       tt,
+					SecretName: secretName,
+				}
+			},
+			di.ImplementedInterfaceType[IDepartment](),
+			di.ImplementedInterfaceType[IDepartment2](),
+		)
+	}
+}
+```
+
+This avoids manual `reflect.TypeOf((*MyInterface)(nil))` calls and keeps interface registration strongly typed.
+
 ## Add by lookup key
 
 ```go
