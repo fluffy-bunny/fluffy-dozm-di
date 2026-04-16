@@ -57,6 +57,21 @@ Configured via `ContainerBuilder.ConfigureOptions(func(*Options))`.
 - `ValidateOnBuild`: validates descriptor call sites while building container.
 - `DetectLifetimeConflicts`: panics if same service type has mixed lifetimes.
 
+## Leak validation strategy
+
+The project uses a 3-layer strategy:
+
+1. Deterministic CI tests (primary proof)
+- Scope-per-request simulations create and dispose scopes repeatedly.
+- Assertions focus on invariants: scoped disposables are disposed, active scoped count returns to zero, and disposed scopes reject further resolution.
+
+2. Benchmark trend checks (regression signal)
+- Request lifecycle benchmark (`create scope -> resolve request graph -> dispose scope`) is used with `-benchmem` to track allocations/op and detect regressions over time.
+
+3. Manual pprof diagnostics (deep investigation)
+- `cmd/memory_profiler` is used for manual exploratory profiling and should not be treated as deterministic CI pass/fail criteria.
+- See `docs/MEMORY_PROFILING.md` for the repeatable workflow and leak-vs-steady comparison.
+
 ## Internal architecture (mental model)
 
 1. Registrations create `Descriptor` objects.
@@ -141,9 +156,11 @@ Latest observed result (2026-04-16):
   - Nil/invalid constructor panic behavior.
   - `Remove`/`Contains` with implemented interface types.
   - Aggregate error unwrap behavior.
+  - Very-heavy scope churn tests for request-like scoped lifecycles and deterministic non-retention assertions.
 
 - `benchmark_test.go`
   - Benchmark scaffolding for performance baselines.
+  - Request lifecycle benchmark for mixed singleton/transient/scoped resolution with scope disposal.
 
 ## Practical quick-start checklist
 
@@ -152,6 +169,35 @@ Latest observed result (2026-04-16):
 3. Use `many_interfaces_test.go`, `lookup_keys_test.go`, and `conflict_test.go` as behavior references for feature changes.
 4. Run `go test ./...` after code edits.
 5. Run `go test ./... -cover` when updating this baseline.
+6. Run `go test ./... -run HeavyScopedRequestSimulation -count=1` when validating scoped lifecycle leak protections.
+7. Run `go test ./... -bench HeavyScopedRequestLifecycle -benchmem` for allocation trend monitoring.
+8. Use the manual playbook in `docs/MEMORY_PROFILING.md` when investigating memory behavior.
+9. Use `scripts/compare_memory_profiles.ps1` for repeatable steady-vs-leak artifact capture and generated `comparison-summary.txt` deltas.
+
+## Changelog highlights
+
+### 2026-04-16
+- Added very-heavy scope churn leak-safety tests (single-threaded and concurrent) in `fixes_test.go`.
+- Added mixed-lifetime request lifecycle benchmark in `benchmark_test.go`.
+- Added profiler mode controls (`steady`, `leak`) in `cmd/memory_profiler/main.go`.
+- Added repeatable profiling playbook in `docs/MEMORY_PROFILING.md`.
+- Added automation script `scripts/compare_memory_profiles.ps1` for steady-vs-leak capture.
+- Added generated `comparison-summary.txt` output with goroutine deltas and profile size ratios.
+- Added point-in-time status snapshot in `docs/RESULT_SNAPSHOT_2026-04-16.md`.
+
+## Design decisions log
+
+### Why deterministic tests are the primary leak gate
+- pprof observations are environment-sensitive and not suitable as strict CI pass/fail criteria.
+- Deterministic assertions on scope disposal counters give stable leak-safety guarantees in CI.
+
+### Why manual profiling still exists
+- Deterministic tests prove invariants, but pprof captures call-path and heap-shape evidence needed for deep investigations.
+- The script plus playbook make this operational workflow repeatable instead of ad hoc.
+
+### Why script output includes both raw profiles and a summary
+- Raw profiles preserve full fidelity for deep debugging.
+- `comparison-summary.txt` gives a fast first-pass signal (goroutine deltas and leak/steady ratios) without opening pprof immediately.
 
 ## Known coverage gaps / future hardening
 

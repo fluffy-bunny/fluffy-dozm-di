@@ -225,3 +225,51 @@ c := b.Build()
 ```
 
 > **Note**: Multiple registrations with the **same** lifetime are allowed and will not trigger a panic. Only mixed lifetimes for the same type are flagged.
+
+## HTTP middleware scope lifecycle
+
+Scoped services are intended to live for a single request.
+
+Typical usage pattern:
+
+```go
+func middleware(root di.Container, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		scopeFactory := di.Get[di.ScopeFactory](root)
+		scope := scopeFactory.CreateScope()
+		defer scope.Dispose()
+
+		requestContainer := scope.Container()
+		_ = requestContainer // pass into handler/request context
+
+		next.ServeHTTP(w, r)
+	})
+}
+```
+
+This repository includes heavy scope-churn tests that repeatedly create/dispose scopes and assert scoped disposables are fully released after each request lifecycle.
+
+## Memory profiling helper
+
+The `cmd/memory_profiler` utility supports two modes:
+
+- `MEMORY_PROFILER_MODE=steady`: one DI request pipeline per HTTP request.
+- `MEMORY_PROFILER_MODE=leak`: intentionally starts long-lived background load to compare leak behavior.
+
+Use `docs/MEMORY_PROFILING.md` for the full profiling workflow and pprof commands.
+
+For automated steady-vs-leak capture, run `pwsh -File ./scripts/compare_memory_profiles.ps1`.
+
+The script writes `comparison-summary.txt` with key deltas like:
+
+- `goroutines.steady`
+- `goroutines.leak`
+- `goroutines.delta`
+- `heapBytes.ratioLeakOverSteady`
+- `allocsBytes.ratioLeakOverSteady`
+
+Quick interpretation:
+
+- If `goroutines.delta` grows roughly with request count in leak mode while steady remains low, leak-mode behavior is being reproduced as expected.
+- Ratios above `1.0` indicate leak mode retained more profile data than steady mode for that run.
+- Use this file as a first-pass signal, then open the raw profiles when deeper analysis is needed.
