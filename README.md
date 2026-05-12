@@ -16,6 +16,29 @@ I would like to register an object by a name. i.e. "my-awesome-object".
 
 A dependency injection module based on reflection.
 
+## Using with AI agents (Copilot, Claude, etc.)
+
+This repo ships an [agent skill](.github/skills/fluffy-dozm-di/SKILL.md) and an [always-on Go instructions file](.github/instructions/go-di.instructions.md) so AI agents (GitHub Copilot, Claude Code, and any tool that follows the `.github/skills/` / `.github/instructions/` conventions) generate code that uses this library correctly.
+
+To pick up these rules in **your own** Go repository:
+
+```powershell
+# minimum: copy the always-on instructions
+mkdir .github\instructions -Force
+Copy-Item path\to\fluffy-dozm-di\.github\instructions\go-di.instructions.md .github\instructions\
+
+# optional: copy the full skill (deep references + runnable examples)
+mkdir .github\skills -Force
+Copy-Item -Recurse path\to\fluffy-dozm-di\.github\skills\fluffy-dozm-di .github\skills\
+```
+
+Or install the instructions file once at user scope so it applies to every workspace you open in VS Code:
+
+```powershell
+Copy-Item path\to\fluffy-dozm-di\.github\instructions\go-di.instructions.md `
+  "$env:APPDATA\Code\User\prompts\go-di.instructions.md"
+```
+
 ## Installation
 
 ```sh
