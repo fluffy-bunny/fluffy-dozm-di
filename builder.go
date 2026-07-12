@@ -84,6 +84,7 @@ func (b *containerBuilder) Build() Container {
 		CallSiteFactory:           newCallSiteFactory(b.descriptors),
 		realizedServices:          syncx.NewMap[reflect.Type, ServiceAccessor](),
 		realizedLookupKeyServices: syncx.NewMap[string, ServiceAccessor](),
+		resolver:                  newCallSiteResolver(),
 	}
 
 	c.Root = newEngineScope(c, true)

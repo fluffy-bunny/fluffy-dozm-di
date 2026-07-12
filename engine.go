@@ -12,7 +12,7 @@ type containerEngine struct {
 
 func (engine *containerEngine) RealizeService(callSite CallSite) (ServiceAccessor, error) {
 	return func(scope *ContainerEngineScope) (any, error) {
-		return CallSiteResolverInstance.Resolve(callSite, scope)
+		return engine.container.resolver.Resolve(callSite, scope)
 	}, nil
 }
 
