@@ -15,8 +15,6 @@ const (
 	resolverLock_Root  resolverLock = 2
 )
 
-var CallSiteResolverInstance *CallSiteResolver = newCallSiteResolver()
-
 type resolverContext struct {
 	Scope         *ContainerEngineScope
 	AcquiredLocks resolverLock

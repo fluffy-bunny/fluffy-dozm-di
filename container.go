@@ -33,6 +33,7 @@ type container struct {
 	engine                    ContainerEngine
 	realizedServices          *syncx.Map[reflect.Type, ServiceAccessor]
 	realizedLookupKeyServices *syncx.Map[string, ServiceAccessor]
+	resolver                  *CallSiteResolver
 
 	disposed          atomic.Bool
 	callSiteValidator *CallSiteValidator
@@ -174,7 +175,7 @@ func (c *container) createServiceLookupKeyAccessor(key string) (ServiceAccessor,
 	}
 
 	if callSite.Cache().Location == CacheLocation_Root {
-		value, err := CallSiteResolverInstance.Resolve(callSite, c.Root)
+		value, err := c.resolver.Resolve(callSite, c.Root)
 		if err != nil {
 			return nil, err
 		}
@@ -196,7 +197,7 @@ func (c *container) createServiceAccessor(serviceType reflect.Type) (ServiceAcce
 	}
 
 	if callSite.Cache().Location == CacheLocation_Root {
-		value, err := CallSiteResolverInstance.Resolve(callSite, c.Root)
+		value, err := c.resolver.Resolve(callSite, c.Root)
 		if err != nil {
 			return nil, err
 		}
