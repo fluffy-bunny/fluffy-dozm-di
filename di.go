@@ -80,6 +80,40 @@ func TryGet[T any](c Container) (result T, err error) {
 	return
 }
 
+// InvokeScoped creates a fresh Scope from factory, resolves T from that
+// scope's Container, and invokes fn with the resolved value -- disposing the
+// scope once fn returns, whether fn returns an error, returns nil, or panics.
+//
+// Use this instead of resolving a Scoped registration once and reusing that
+// one instance across many calls (e.g. via a long-lived "forever scope" kept
+// around for callers with no natural per-call scope of their own) whenever T
+// -- or anything reachable from its dependency graph -- holds mutable state
+// that must not be shared across concurrent callers. Each call gets its own
+// instance of T, and Dispose is guaranteed to run exactly once per call.
+func InvokeScoped[T any](factory ScopeFactory, fn func(T) error) (err error) {
+	scope := factory.CreateScope()
+	defer scope.Dispose()
+
+	service, err := TryGet[T](scope.Container())
+	if err != nil {
+		return err
+	}
+	return fn(service)
+}
+
+// InvokeScopedResult is InvokeScoped for callers that also need to return a
+// value out of fn, in addition to an error.
+func InvokeScopedResult[T any, R any](factory ScopeFactory, fn func(T) (R, error)) (result R, err error) {
+	scope := factory.CreateScope()
+	defer scope.Dispose()
+
+	service, err := TryGet[T](scope.Container())
+	if err != nil {
+		return
+	}
+	return fn(service)
+}
+
 // Invoke the function fn.
 // the input paramenters of the fn function will be resolved from the Container c.
 func Invoke(c Container, fn any) (fnReturn []any, err error) {
