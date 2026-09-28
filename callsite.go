@@ -211,10 +211,8 @@ type callSiteChain struct {
 }
 
 func (c *callSiteChain) CheckCircularDependency(serviceType reflect.Type) error {
-	for k := range c.items {
-		if k == serviceType {
-			return c.createCircularDependencyError(serviceType)
-		}
+	if _, ok := c.items[serviceType]; ok {
+		return c.createCircularDependencyError(serviceType)
 	}
 	return nil
 }
@@ -289,11 +287,8 @@ func (f *CallSiteFactory) GetCallSite(serviceType reflect.Type, chain *callSiteC
 }
 
 func (f *CallSiteFactory) GetCallSiteByDescriptor(descriptor *Descriptor, chain *callSiteChain) (CallSite, error) {
-	if descriptorCache, ok := f.descriptorLookup[descriptor.ServiceType]; ok {
-		return f.tryCreateExact(
-			descriptor,
-			chain,
-			descriptorCache.GetSlot(descriptor))
+	if _, ok := f.descriptorLookup[descriptor.ServiceType]; ok {
+		return f.tryCreateExact(descriptor, chain)
 	}
 
 	return nil, errors.New("descriptorLookup didn't contain requested descriptor")
@@ -310,7 +305,7 @@ func (f *CallSiteFactory) createCallSite(serviceType reflect.Type, chain *callSi
 	defer callSiteLocker.Unlock()
 
 	if descriptor, ok := f.descriptorLookup[serviceType]; ok {
-		return f.tryCreateExact(descriptor.Last(), chain, DefaultSlot)
+		return f.tryCreateExact(descriptor.Last(), chain)
 	}
 
 	if serviceType.Kind() == reflect.Slice {
@@ -320,7 +315,13 @@ func (f *CallSiteFactory) createCallSite(serviceType reflect.Type, chain *callSi
 	return nil, &errorx.ServiceNotFound{ServiceType: serviceType}
 }
 
-func (f *CallSiteFactory) tryCreateExact(descriptor *Descriptor, chain *callSiteChain, slot int) (CallSite, error) {
+// tryCreateExact returns the call site for descriptor. The cache key is always
+// derived from the descriptor's position among registrations of its own
+// ServiceType, never from the list it was reached through (e.g. an
+// implemented interface), so every path to a descriptor shares one call site
+// -- and therefore one singleton value and one scoped cache slot.
+func (f *CallSiteFactory) tryCreateExact(descriptor *Descriptor, chain *callSiteChain) (CallSite, error) {
+	slot := f.descriptorLookup[descriptor.ServiceType].GetSlot(descriptor)
 	callSiteKey := ServiceCacheKey{descriptor.ServiceType, slot}
 	callSite, ok := f.callSiteCache.Load(callSiteKey)
 	if ok {
@@ -343,7 +344,7 @@ func (f *CallSiteFactory) tryCreateExact(descriptor *Descriptor, chain *callSite
 		return nil, &errorx.InvalidDescriptor{ServiceType: descriptor.ServiceType}
 	}
 
-	f.callSiteCache.Store(callSiteKey, callSite)
+	callSite, _ = f.callSiteCache.LoadOrStore(callSiteKey, callSite)
 	return callSite, nil
 }
 
@@ -395,7 +396,7 @@ func (f *CallSiteFactory) createSlice(serviceType reflect.Type, chain *callSiteC
 	if descriptorCache, ok := f.descriptorLookup[elementType]; ok {
 		num := descriptorCache.Num()
 		for i := 0; i < num; i++ {
-			cs, err := f.tryCreateExact(descriptorCache.Get(i), chain, num-i-1)
+			cs, err := f.tryCreateExact(descriptorCache.Get(i), chain)
 			if err != nil {
 				return nil, err
 			}
@@ -410,7 +411,8 @@ func (f *CallSiteFactory) createSlice(serviceType reflect.Type, chain *callSiteC
 		resultCache = newResultCache(cacheLocation, key)
 	}
 
-	return newSliceCallSite(resultCache, elementType, util.ClipSlice(callSites)), nil
+	callSite, _ := f.callSiteCache.LoadOrStore(key, newSliceCallSite(resultCache, elementType, util.ClipSlice(callSites)))
+	return callSite, nil
 }
 
 func (f *CallSiteFactory) Add(serviceType reflect.Type, callSite CallSite) {

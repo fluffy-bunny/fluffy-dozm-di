@@ -133,7 +133,11 @@ func Invoke(c Container, fn any) (fnReturn []any, err error) {
 			return
 		}
 
-		inputs[i] = reflect.ValueOf(v)
+		if v == nil {
+			inputs[i] = reflect.Zero(t)
+		} else {
+			inputs[i] = reflect.ValueOf(v)
+		}
 	}
 
 	ouputs := vfn.Call(inputs)

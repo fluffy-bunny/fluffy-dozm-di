@@ -17,6 +17,72 @@ type ContainerEngineScope struct {
 	Locker           *sync.Mutex
 	disposed         atomic.Bool
 	disposables      []Disposable
+	// signalled when a scoped service under construction is stored or its
+	// construction fails; created lazily, only when two callers contend
+	pendingCond *sync.Cond
+}
+
+// pendingMarker occupies a ResolvedServices slot while that scoped service is
+// being constructed. It is replaced by the instance on success and removed on
+// failure.
+var pendingMarker any = &struct{ _ byte }{}
+
+// acquireSlot returns the cached scoped instance for key. If there is none,
+// it marks the slot pending and returns owned == true: the caller must then
+// construct the service and call storeResolved or clearPending. If another
+// caller is already constructing it, acquireSlot waits for that to finish.
+func (s *ContainerEngineScope) acquireSlot(key ServiceCacheKey) (v any, owned bool, err error) {
+	s.Locker.Lock()
+	defer s.Locker.Unlock()
+	for {
+		if s.ResolvedServices == nil {
+			return nil, false, &errorx.ObjectDisposedError{Message: reflectx.TypeOf[Container]().String()}
+		}
+		v, ok := s.ResolvedServices[key]
+		if !ok {
+			s.ResolvedServices[key] = pendingMarker
+			return nil, true, nil
+		}
+		if v != pendingMarker {
+			return v, false, nil
+		}
+		if s.pendingCond == nil {
+			s.pendingCond = sync.NewCond(s.Locker)
+		}
+		s.pendingCond.Wait()
+	}
+}
+
+// storeResolved captures v for disposal and caches it under key, whose slot
+// the caller acquired with acquireSlot.
+func (s *ContainerEngineScope) storeResolved(key ServiceCacheKey, v any) error {
+	s.Locker.Lock()
+	defer s.Locker.Unlock()
+	if _, err := s.CaptureDisposableWithoutLock(v); err != nil {
+		return err
+	}
+	if s.ResolvedServices == nil {
+		return &errorx.ObjectDisposedError{Message: reflectx.TypeOf[Container]().String()}
+	}
+	s.ResolvedServices[key] = v
+	s.wakePending()
+	return nil
+}
+
+// clearPending releases a slot acquired with acquireSlot whose construction failed.
+func (s *ContainerEngineScope) clearPending(key ServiceCacheKey) {
+	s.Locker.Lock()
+	defer s.Locker.Unlock()
+	if s.ResolvedServices[key] == pendingMarker {
+		delete(s.ResolvedServices, key)
+	}
+	s.wakePending()
+}
+
+func (s *ContainerEngineScope) wakePending() {
+	if s.pendingCond != nil {
+		s.pendingCond.Broadcast()
+	}
 }
 
 func (c *ContainerEngineScope) GetDescriptors() []*Descriptor {

@@ -1,11 +1,10 @@
 package util
 
-import "sort"
+import "slices"
 
+// ReverseSlice reverses s in place.
 func ReverseSlice[T any](s []T) {
-	sort.SliceStable(s, func(i, j int) bool {
-		return i > j
-	})
+	slices.Reverse(s)
 }
 
 func ClipSlice[T any](s []T) []T {

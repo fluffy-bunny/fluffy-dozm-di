@@ -83,7 +83,7 @@ func (b *containerBuilder) Build() Container {
 	c := &container{
 		CallSiteFactory:           newCallSiteFactory(b.descriptors),
 		realizedServices:          syncx.NewMap[reflect.Type, ServiceAccessor](),
-		realizedLookupKeyServices: syncx.NewMap[string, ServiceAccessor](),
+		realizedLookupKeyServices: syncx.NewMap[lookupKey, ServiceAccessor](),
 		resolver:                  newCallSiteResolver(),
 	}
 
