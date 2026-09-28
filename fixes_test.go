@@ -395,9 +395,16 @@ type ICache interface {
 	GetItem(key string) string
 }
 
-type logger struct{ messages []string }
+// logger is registered as a singleton and shared by concurrent scopes, so it
+// must be safe for concurrent use.
+type logger struct {
+	mu       sync.Mutex
+	messages []string
+}
 
 func (l *logger) Log(msg string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	l.messages = append(l.messages, msg)
 }
 
