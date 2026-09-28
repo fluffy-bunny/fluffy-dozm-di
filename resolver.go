@@ -11,8 +11,7 @@ import (
 type resolverLock byte
 
 const (
-	resolverLock_Scope resolverLock = 1
-	resolverLock_Root  resolverLock = 2
+	resolverLock_Root resolverLock = 2
 )
 
 type resolverContext struct {
@@ -162,31 +161,37 @@ func (r *CallSiteResolver) visitScopeCache(callSite CallSite, ctx resolverContex
 		return r.visitRootCache(callSite, ctx)
 	}
 
-	resolvedServices := scope.ResolvedServices
+	// Construction is serialized per service rather than per scope: scope.Locker
+	// is not reentrant, so it must not be held while user constructors or
+	// factories run, since they may resolve other services from this scope.
 	cacheKey := callSite.Cache().Key
-
-	if (ctx.AcquiredLocks & resolverLock_Scope) == 0 {
-		scope.Locker.Lock()
-		defer scope.Locker.Unlock()
+	resolved, owned, err := scope.acquireSlot(cacheKey)
+	if err != nil || !owned {
+		return resolved, err
 	}
+	return r.constructScoped(callSite, ctx, cacheKey)
+}
 
-	if resolved, ok := resolvedServices[cacheKey]; ok {
-		return resolved, nil
-	}
+// constructScoped builds a scoped service whose cache slot the caller
+// acquired, then stores the instance in it. On error or panic the slot is
+// cleared so a later caller can retry.
+func (r *CallSiteResolver) constructScoped(callSite CallSite, ctx resolverContext, cacheKey ServiceCacheKey) (any, error) {
+	scope := ctx.Scope
+	stored := false
+	defer func() {
+		if !stored {
+			scope.clearPending(cacheKey)
+		}
+	}()
 
-	resolved, err := r.visitCallSiteMain(callSite, resolverContext{
-		Scope:         scope,
-		AcquiredLocks: ctx.AcquiredLocks | resolverLock_Scope,
-	})
+	resolved, err := r.visitCallSiteMain(callSite, ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	if _, err = scope.CaptureDisposableWithoutLock(resolved); err != nil {
+	if err = scope.storeResolved(cacheKey, resolved); err != nil {
 		return nil, err
 	}
-
-	resolvedServices[cacheKey] = resolved
+	stored = true
 	return resolved, nil
 }
 
@@ -209,7 +214,9 @@ func (r *CallSiteResolver) visitSlice(callSite *SliceCallSite, ctx resolverConte
 		if err != nil {
 			return nil, err
 		}
-		s.Index(i).Set(reflect.ValueOf(v))
+		if v != nil {
+			s.Index(i).Set(reflect.ValueOf(v))
+		}
 	}
 
 	return s.Interface(), nil

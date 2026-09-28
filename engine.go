@@ -16,22 +16,6 @@ func (engine *containerEngine) RealizeService(callSite CallSite) (ServiceAccesso
 	}, nil
 }
 
-// func (engine *containerEngine) RealizeService(callSite CallSite) (ServiceAccessor, error) {
-// 	callCount := uint32(0)
-
-// 	return func(scope *ContainerEngineScope) (any, error) {
-// 		result, err := CallSiteResolverInstance.Resolve(callSite, scope)
-// 		if callCount < 2 && atomic.AddUint32(&callCount, 1) == 2 {
-// 			go func(sp *container) {
-// 				// TODO: replace service accessor
-// 				// sp.ReplaceServiceAccessor(accessor)
-// 			}(engine.container)
-// 		}
-
-// 		return result, err
-// 	}, nil
-// }
-
 func newContainerEngine(c *container) ContainerEngine {
 	return &containerEngine{container: c}
 }

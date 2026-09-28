@@ -15,6 +15,9 @@ type validatorState struct {
 
 type CallSiteValidator struct {
 	scopedServices *syncx.Map[reflect.Type, reflect.Type]
+	// same as scopedServices, for services resolved via GetByLookupKey; kept
+	// separate so a keyed scoped registration does not affect plain Get
+	scopedLookupKeys *syncx.Map[lookupKey, reflect.Type]
 }
 
 func (v *CallSiteValidator) ValidateCallSite(callSite CallSite) error {
@@ -30,22 +33,46 @@ func (v *CallSiteValidator) ValidateCallSite(callSite CallSite) error {
 	return nil
 }
 
+func (v *CallSiteValidator) ValidateLookupKeyCallSite(callSite CallSite, key lookupKey) error {
+	scoped, err := v.visitCallSite(callSite, validatorState{})
+	if err != nil {
+		return err
+	}
+
+	if scoped != nil {
+		v.scopedLookupKeys.Store(key, scoped)
+	}
+
+	return nil
+}
+
 func (v *CallSiteValidator) ValidateResolution(serviceType reflect.Type, scope Scope, rootScope Scope) (err error) {
 	if scope == rootScope {
-		scopedService, ok := v.scopedServices.Load(serviceType)
-		if !ok {
-			return
-		}
-		if serviceType == scopedService {
-			return &errorx.ScopedServiceFromRootError{
-				Message: fmt.Sprintf("cannot resolve scoped service '%v' from root scope", serviceType)}
-		}
-
-		return &errorx.ScopedServiceFromRootError{
-			Message: fmt.Sprintf("cannot resolve '%v' from root scope because it requires scoped service '%v'", serviceType, scopedService),
+		if scopedService, ok := v.scopedServices.Load(serviceType); ok {
+			return scopedFromRootError(serviceType, scopedService)
 		}
 	}
 	return
+}
+
+func (v *CallSiteValidator) ValidateLookupKeyResolution(key lookupKey, scope Scope, rootScope Scope) (err error) {
+	if scope == rootScope {
+		if scopedService, ok := v.scopedLookupKeys.Load(key); ok {
+			return scopedFromRootError(key.serviceType, scopedService)
+		}
+	}
+	return
+}
+
+func scopedFromRootError(serviceType reflect.Type, scopedService reflect.Type) error {
+	if serviceType == scopedService {
+		return &errorx.ScopedServiceFromRootError{
+			Message: fmt.Sprintf("cannot resolve scoped service '%v' from root scope", serviceType)}
+	}
+
+	return &errorx.ScopedServiceFromRootError{
+		Message: fmt.Sprintf("cannot resolve '%v' from root scope because it requires scoped service '%v'", serviceType, scopedService),
+	}
 }
 
 func (r *CallSiteValidator) visitCallSite(callSite CallSite, state validatorState) (reflect.Type, error) {
@@ -137,5 +164,8 @@ func (v *CallSiteValidator) visitNoCache(callSite CallSite, state validatorState
 }
 
 func newCallSiteValidator() *CallSiteValidator {
-	return &CallSiteValidator{scopedServices: syncx.NewMap[reflect.Type, reflect.Type]()}
+	return &CallSiteValidator{
+		scopedServices:   syncx.NewMap[reflect.Type, reflect.Type](),
+		scopedLookupKeys: syncx.NewMap[lookupKey, reflect.Type](),
+	}
 }

@@ -26,13 +26,19 @@ func DefaultOptions() Options {
 	return Options{}
 }
 
+// realized-accessor cache key for GetByLookupKey; avoids hashing on every call
+type lookupKey struct {
+	serviceType reflect.Type
+	key         string
+}
+
 // Container implementation
 type container struct {
 	Root                      *ContainerEngineScope
 	CallSiteFactory           *CallSiteFactory
 	engine                    ContainerEngine
 	realizedServices          *syncx.Map[reflect.Type, ServiceAccessor]
-	realizedLookupKeyServices *syncx.Map[string, ServiceAccessor]
+	realizedLookupKeyServices *syncx.Map[lookupKey, ServiceAccessor]
 	resolver                  *CallSiteResolver
 
 	disposed          atomic.Bool
@@ -108,20 +114,20 @@ func (c *container) GetWithScopeWithLookupKey(serviceType reflect.Type, key stri
 			}
 		}
 	}()
-	hashKey := hashTypeAndString(serviceType, key)
-	accessor, ok := c.realizedLookupKeyServices.Load(hashKey)
+	cacheKey := lookupKey{serviceType, key}
+	accessor, ok := c.realizedLookupKeyServices.Load(cacheKey)
 	if !ok {
-		accessor, err = c.createServiceLookupKeyAccessor(hashKey)
+		accessor, err = c.createServiceLookupKeyAccessor(cacheKey)
 		if err != nil {
 			return
 		} else {
-			accessor, _ = c.realizedLookupKeyServices.LoadOrStore(hashKey, accessor)
+			accessor, _ = c.realizedLookupKeyServices.LoadOrStore(cacheKey, accessor)
 		}
 
 	}
 
 	if c.callSiteValidator != nil {
-		err := c.callSiteValidator.ValidateResolution(serviceType, scope, c.Root)
+		err := c.callSiteValidator.ValidateLookupKeyResolution(cacheKey, scope, c.Root)
 		if err != nil {
 			return nil, err
 		}
@@ -153,23 +159,18 @@ func (c *container) createEngine() ContainerEngine {
 	return newContainerEngine(c)
 }
 
-func (c *container) createServiceLookupKeyAccessor(key string) (ServiceAccessor, error) {
-	descriptor, ok := c.CallSiteFactory.descriptorKeyLookup[key]
+func (c *container) createServiceLookupKeyAccessor(key lookupKey) (ServiceAccessor, error) {
+	descriptor, ok := c.CallSiteFactory.descriptorKeyLookup[hashTypeAndString(key.serviceType, key.key)]
 	if !ok || descriptor.item == nil {
-		return nil, fmt.Errorf("no service registered for lookup key '%s'", key)
+		return nil, fmt.Errorf("no service of type '%v' registered for lookup key '%s'", key.serviceType, key.key)
 	}
-	itemDescriptor := descriptor.item
-	if len(descriptor.items) > 0 {
-		// get the last one
-		itemDescriptor = descriptor.items[len(descriptor.items)-1]
-	}
-	callSite, err := c.CallSiteFactory.GetCallSiteByDescriptor(itemDescriptor, newCallSiteChain())
+	callSite, err := c.CallSiteFactory.GetCallSiteByDescriptor(descriptor.Last(), newCallSiteChain())
 	if err != nil {
 		return nil, err
 	}
 
 	if c.callSiteValidator != nil {
-		if err := c.callSiteValidator.ValidateCallSite(callSite); err != nil {
+		if err := c.callSiteValidator.ValidateLookupKeyCallSite(callSite, key); err != nil {
 			return nil, err
 		}
 	}

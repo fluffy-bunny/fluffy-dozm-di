@@ -162,6 +162,9 @@ func checkConstructor(ctor *ConstructorInfo, serviceType reflect.Type) (err erro
 }
 
 func instanceAssignable(instance any, to reflect.Type) (err error) {
+	if instance == nil {
+		return fmt.Errorf("the instance of type '%v' must not be nil", to)
+	}
 	if t := reflect.TypeOf(instance); !t.AssignableTo(to) {
 		err = fmt.Errorf("the instance of type '%v' can not assignable to type '%v'", t, to)
 	}
@@ -180,5 +183,7 @@ func hashTypeAndString(t reflect.Type, s string) string {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
-	return fmt.Sprintf("%s/%s-%s", t.PkgPath(), t.Name(), s)
+	// t.String() rather than t.Name(): Name() is empty for unnamed types
+	// (func() int, []string, map[...]...), which made them all share one key.
+	return t.PkgPath() + "/" + t.String() + "-" + s
 }
